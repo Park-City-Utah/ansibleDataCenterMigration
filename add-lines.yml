@@ -1,0 +1,27 @@
+# add-lines.yml
+---
+  - hosts: webservers
+    become: true
+    vars: 
+      path_to_files_resolver: "/etc/resolv.conf"
+      path_to_files_sysconfig: "/etc/sysconfig/network-scripts/ifcfg-eth0"
+
+    tasks:
+      - name: Add nameserver to resolver
+        lineinfile:
+          path: "{{ path_to_files_resolver }}"
+          line: "{{ item }}"
+        with_items:
+            - "nameserver <ip>"
+            - "nameserver <ip>"
+
+      - name: Add DNS to sysconfig
+        lineinfile:
+          path: "{{ path_to_files_sysconfig }}"
+          line: "{{ item }}"
+        with_items:
+            - DNS1=<ip>
+            - DNS2=<ip>
+
+      - name: Restart network services 
+        command: systemctl restart network

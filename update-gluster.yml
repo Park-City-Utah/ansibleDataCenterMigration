@@ -1,0 +1,60 @@
+# update-gluster.yml
+---
+  - hosts: webservers
+    become: true
+    vars: 
+      path_to_files: "/var/www/html"
+      ip_ref_file: "../csv/<replace>.csv"
+
+    tasks:
+      - name: Stop gluster 
+        command: systemctl stop glusterd
+
+      - name: Find files containing (all) IPs
+        find:
+          paths: "{{ path_to_files }}"
+          contains: "{{ '([0-9]{1,3}[\\.]){3}[0-9]{1,3}' }}"
+          hidden: yes
+          recurse: yes
+          patterns: '*.vol'
+        register: files_containing_ip
+
+      - name: Debug 'Find' results
+        debug:
+          msg: "{{ item }}"
+        vars:
+          items: "{{ files_containing_ip.filesles | map(attontaining_ip.files | map(attribute='path') | list }}"
+
+      - name: Backup original files
+        copy:
+          remote_src: yes
+          src: "{{ item['path'] }}"
+          dest: "{{ item['path'] }}.{{ ansible_date_time['iso8601'] }}"
+          #backup: yes
+          #force: yes
+        with_items: "{{ files_containing_ip['files'] }}"
+
+      - name: Read csv into dictionary
+        read_csv:
+          path: "{{ ip_ref_file }}"
+        register: ips_out
+        delegate_to: localhost
+        become: false
+
+      - name: Replace all instances of ips 
+        replace:
+          path: "{{ item[0]['path'] }}"
+          regexp: "{{ item[1]['key'] }}"
+          replace: "{{ item[1]['value'] }}"
+          backup: no
+          force: no
+        with_nested: 
+          - "{{ files_containing_ip['files'] }}"
+          - "{{ ips_out['list'] }}"
+        register: loop_ouput
+
+    #ToDo
+    # Rename the .info files (ip is in name)
+
+      - name: Stop gluster 
+        command: systemctl start glusterd

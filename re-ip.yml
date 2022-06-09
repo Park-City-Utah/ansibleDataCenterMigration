@@ -1,0 +1,69 @@
+# re-ip.yml
+# Parker Ferguson Feb 27, 2020
+---
+  - hosts: localhost
+    connection: local
+    become: false
+    vars: 
+      path_to_files: "../../ansible_work"
+      ip_ref_file: "../csv/ips.csv"
+      output_path: "../output/reipoutput.txt"
+
+    tasks:
+      - name: Find files containing (all) IPs
+        find:
+          paths: "{{ path_to_files }}"
+          contains: "10.170*" #"{{ '([0-9]{1,3}[\\.]){3}[0-9]{1,3}' }}" # 
+          hidden: yes
+          recurse: yes
+          patterns: '*'
+        #delegate_to: localhost
+        register: files_containing_ip
+
+      - name: Debug 'Find' results
+        debug:
+          msg: "{{ items }}"
+        vars:
+          items: "{{ files_containing_ip.files | map(attribute='path') | list }}"
+        #delegate_to: localhost
+
+      - name: Copy staging files for edit
+        copy:
+          remote_src: yes
+          src: "{{ item['path'] }}"
+          dest: "{{ item['path'] }}.staging"
+          #backup: yes
+          #force: yes
+        with_items: "{{ files_containing_ip['files'] }}"
+        #delegate_to: localhost
+        register: staging_files
+
+      - name: Read csv into dictionary
+        read_csv:
+          path: "{{ ip_ref_file }}"
+        register: ips_out
+        delegate_to: localhost
+        become: false
+
+      - name: Replace all instances of ips 
+        replace:
+          path: "{{ item[0]['dest'] }}"
+          regexp: "{{ item[1]['key'] }}"
+          replace: "{{ item[1]['value'] }}"
+          backup: no
+          force: no
+        with_nested: 
+          - "{{ staging_files['results'] }}"
+          - "{{ ips_out['list'] }}"
+        delegate_to: localhost
+        register: loop_ouput
+
+      - name: Add re-ip data to file, create (file/line) if absent
+        lineinfile:
+          path: "{{ output_path }}"
+          line: "{{ inventory_hostname }},{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }},{{ item['dest'] }}"
+          state: present
+          create: yes
+        with_items: "{{ staging_files['results'] }}"
+        delegate_to: localhost
+        become: false

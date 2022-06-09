@@ -1,0 +1,32 @@
+# cert_expiry.yml
+---
+  - hosts: webservers
+    become: true
+    vars: 
+      path_to_files: "/etc/"
+      output_path: "../output/output.txt"
+
+    tasks: 
+
+      - name: Find certs
+        find:
+          paths: "{{ path_to_files }}"
+          hidden: yes
+          recurse: yes
+          patterns: '*.crt,*.pem'
+        register: output
+
+      - name: Check cert expiry via command module
+        command: openssl x509 -enddate -in "{{ item }}"
+        with_items: "{{ output.files | map(attribute='path') | list }}"
+        register: result
+
+      - name: Add cert expiry data to file, create (file/line) if absent
+        lineinfile:
+          path: "{{ output_path }}"
+          line: "{{ inventory_hostname }},{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }},{{ item['item'] }},{{ item['stdout_lines'][0] | replace('notAfter=', '')}}"
+          state: present
+          create: yes
+        with_items: "{{ result['results'] }}"
+        delegate_to: localhost
+        become: false 
